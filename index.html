@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudentBudgetAI | Dashboard</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#1e293b}
+header{background:#172554;color:white;padding:22px 7%}header h1{margin:0 0 6px}header p{margin:0;color:#cbd5e1}
+main{max-width:1100px;margin:30px auto;padding:0 18px 35px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+.card,.panel{background:white;border-radius:14px;padding:22px;box-shadow:0 3px 14px #0f172a0c}.card p{color:#64748b;margin:0 0 12px}.card h2{margin:0;font-size:26px;overflow-wrap:anywhere}.panel{margin-top:22px}.panel h2{margin-top:0}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+input,select,button{padding:12px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;width:100%}
+button{background:#2563eb;color:white;border:0;cursor:pointer;font-weight:bold}button:hover{background:#1d4ed8}button:disabled{opacity:.65;cursor:wait}
+#message,#budgetMessage{margin-top:12px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:13px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap}th{color:#64748b;font-size:13px}
+.income{color:#15803d;font-weight:bold}.expense{color:#dc2626;font-weight:bold}.advice{background:#eff6ff;border-left:4px solid #2563eb;padding:14px;border-radius:8px;line-height:1.5}
+.budget-item{border:1px solid #e2e8f0;padding:16px;margin-top:12px;border-radius:10px}.budget-item h3{margin:0 0 10px}.budget-item p{margin:7px 0}
+.progress{height:10px;background:#e2e8f0;border-radius:10px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;background:#16a34a;width:0%;transition:width .25s ease}
+.warning{color:#dc2626;font-weight:bold}.safe{color:#15803d}.chart-wrap{position:relative;width:100%;margin:18px auto 28px}.expense-chart-wrap{max-width:600px;height:320px}.monthly-chart-wrap{max-width:700px;height:350px}.muted{color:#64748b}
+.action-cell{display:flex;gap:8px}.action-btn{width:auto;padding:8px 10px;font-size:13px;white-space:nowrap}.edit-btn{background:#0f766e}.edit-btn:hover{background:#115e59}.delete-btn{background:#dc2626}.delete-btn:hover{background:#b91c1c}
+.secondary-btn{background:#64748b}.secondary-btn:hover{background:#475569}.form-actions{display:flex;gap:10px;grid-column:1/-1}.form-actions button{flex:1}
+.edit-panel{border:2px solid #93c5fd}.hidden{display:none!important}
+@media(max-width:500px){header{padding:20px}.card h2{font-size:22px}.panel{padding:16px}.expense-chart-wrap{height:280px}.monthly-chart-wrap{height:300px}.action-cell{flex-direction:column}.action-btn{width:100%}}
+</style>
+</head>
+<body>
+<header><h1>StudentBudgetAI</h1><p>Your student money management dashboard</p></header>
+<main>
+<section class="cards" aria-label="Financial summary">
+<div class="card"><p>Total Income</p><h2 id="income">Rs. 0.00</h2></div>
+<div class="card"><p>Total Expenses</p><h2 id="expenses">Rs. 0.00</h2></div>
+<div class="card"><p>Remaining Balance</p><h2 id="balance">Rs. 0.00</h2></div>
+<div class="card"><p>Transactions</p><h2 id="count">0</h2></div>
+</section>
+
+<section class="panel">
+<h2>Add a transaction</h2>
+<form id="transactionForm">
+<input id="title" placeholder="Description (e.g. Books)" maxlength="150" required>
+<input id="amount" type="number" min="0.01" step="0.01" placeholder="Amount (Rs.)" required>
+<select id="type" aria-label="Transaction type"><option value="expense">Expense</option><option value="income">Income</option></select>
+<select id="category" aria-label="Transaction category"><option>Food</option><option>Transport</option><option>Education</option><option>Accommodation</option><option>Entertainment</option><option>Health</option><option>Other</option></select>
+<button id="transactionSubmit" type="submit">Save transaction</button>
+</form><p id="message" role="status" aria-live="polite"></p>
+</section>
+
+<section id="editPanel" class="panel edit-panel hidden">
+<h2>Edit transaction</h2>
+<p class="muted">Update the fields below, then save your changes.</p>
+<form id="editForm">
+<input id="editTitle" placeholder="Description" maxlength="150" required>
+<input id="editAmount" type="number" min="0.01" step="0.01" placeholder="Amount (Rs.)" required>
+<select id="editType" aria-label="Edit transaction type"><option value="expense">Expense</option><option value="income">Income</option></select>
+<select id="editCategory" aria-label="Edit category"><option>Food</option><option>Transport</option><option>Education</option><option>Accommodation</option><option>Entertainment</option><option>Health</option><option>Other</option></select>
+<input id="editDate" type="date" required>
+<div class="form-actions"><button id="editSave" type="submit">Save changes</button><button id="cancelEdit" class="secondary-btn" type="button">Cancel</button></div>
+</form><p id="editMessage" role="status" aria-live="polite"></p>
+</section>
+
+<section class="panel">
+<h2>Monthly category budgets</h2>
+<p class="muted">Set a monthly spending limit for each category. Saving the same category again updates its limit.</p>
+<button type="button" id="enableSoundButton" onclick="enableBudgetSound()">Enable budget warning sound</button>
+<form id="budgetForm">
+<select id="budgetCategory" required aria-label="Budget category"><option value="Food">Food</option><option value="Transport">Transport</option><option value="Education">Education</option><option value="Accommodation">Accommodation</option><option value="Entertainment">Entertainment</option><option value="Health">Health</option><option value="Other">Other</option></select>
+<input id="monthlyLimit" type="number" min="0.01" step="0.01" placeholder="Monthly limit (Rs.)" required>
+<button id="budgetSubmit" type="submit">Save monthly budget</button>
+</form><p id="budgetMessage" role="status" aria-live="polite"></p><div id="budgetList">Loading budgets...</div>
+</section>
+
+<section class="panel">
+<h2>Recent transactions</h2>
+<p class="muted">Use Edit to change a transaction or Delete to remove it.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Type</th><th>Amount</th><th>Actions</th></tr></thead>
+<tbody id="transactionList"><tr><td colspan="6">Loading transactions...</td></tr></tbody>
+</table></div>
+</section>
+
+<section class="panel"><h2>Expense Charts</h2>
+<div class="chart-wrap expense-chart-wrap"><canvas id="expenseChart" role="img" aria-label="Doughnut chart showing expenses by category"></canvas></div>
+<div class="chart-wrap monthly-chart-wrap"><canvas id="monthlyChart" role="img" aria-label="Bar chart comparing monthly income and expenses"></canvas></div>
+<p id="chartMessage" class="muted" role="status"></p></section>
+
+<section class="panel">
+  <h2>Smart budget advice</h2>
+  <div class="advice" id="advice">Click the button below to get personalized AI budgeting advice.</div>
+  <button type="button" id="aiAdviceBtn" onclick="getAIAdvice()">Get AI Advice</button>
+</section>
+
+</main>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+"use strict";
+const money = amount => "Rs. " + Number(amount || 0).toLocaleString("en-PK",{minimumFractionDigits:2,maximumFractionDigits:2});
+let expenseChartInstance=null, monthlyChartInstance=null, editingId=null;
+
+function renderExpenseChart(transactions){
+ const canvas=document.getElementById("expenseChart"), message=document.getElementById("chartMessage");
+ if(typeof Chart==="undefined"){message.textContent="Charts could not load. Check your internet connection and refresh the page.";return;}
+ const categories={};
+ transactions.filter(t=>t.transaction_type==="expense").forEach(t=>{const c=t.category||"Other";categories[c]=(categories[c]||0)+Number(t.amount||0);});
+ if(expenseChartInstance)expenseChartInstance.destroy();
+ const labels=Object.keys(categories),values=Object.values(categories);
+ expenseChartInstance=new Chart(canvas,{type:"doughnut",data:{labels:labels.length?labels:["No expenses yet"],datasets:[{label:"Expenses (Rs.)",data:values.length?values:[1]}]},options:{responsive:true,maintainAspectRatio:false,plugins:{title:{display:true,text:"Expenses by Category"},tooltip:{callbacks:{label:ctx=>labels.length?ctx.label+": "+money(ctx.raw):"No expenses recorded"}},legend:{position:"bottom"}}}});
+}
+function renderMonthlyChart(transactions){
+ const canvas=document.getElementById("monthlyChart"),message=document.getElementById("chartMessage");
+ if(typeof Chart==="undefined"){message.textContent="Charts could not load. Check your internet connection and refresh the page.";return;}
+ const months=[],income=[],expenses=[],now=new Date();
+ for(let i=5;i>=0;i--){
+  const d=new Date(now.getFullYear(),now.getMonth()-i,1),key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  months.push(d.toLocaleDateString("en",{month:"short",year:"numeric"}));let inc=0,exp=0;
+  transactions.forEach(t=>{if(!String(t.transaction_date||"").startsWith(key))return;if(t.transaction_type==="income")inc+=Number(t.amount||0);if(t.transaction_type==="expense")exp+=Number(t.amount||0);});
+  income.push(inc);expenses.push(exp);
+ }
+ if(monthlyChartInstance)monthlyChartInstance.destroy();
+ monthlyChartInstance=new Chart(canvas,{type:"bar",data:{labels:months,datasets:[{label:"Income (Rs.)",data:income,backgroundColor:"#16a34a"},{label:"Expenses (Rs.)",data:expenses,backgroundColor:"#dc2626"}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{callback:v=>"Rs. "+Number(v).toLocaleString("en-PK")}}},plugins:{title:{display:true,text:"Monthly Income vs Expenses"},legend:{position:"bottom"},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+money(ctx.raw)}}}}});
+ message.textContent="";
+}
+function makeCell(row,text,className){
+ const cell=row.insertCell();cell.textContent=text;if(className)cell.className=className;return cell;
+}
+async function loadTransactions(){
+ const list=document.getElementById("transactionList"),advice=document.getElementById("advice");
+ try{
+  const response=await fetch("/api/transactions");if(!response.ok)throw new Error("Could not load transactions");
+  const transactions=await response.json();if(!Array.isArray(transactions))throw new Error("Unexpected transaction data");
+  renderExpenseChart(transactions);renderMonthlyChart(transactions);
+  let income=0,expenses=0;list.replaceChildren();
+  if(!transactions.length){const row=list.insertRow();const cell=row.insertCell();cell.colSpan=6;cell.textContent="No transactions yet. Add your first one above.";}
+  transactions.forEach(item=>{
+   const amount=Number(item.amount||0);if(item.transaction_type==="income")income+=amount;else if(item.transaction_type==="expense")expenses+=amount;
+   const row=list.insertRow();makeCell(row,item.transaction_date||"");makeCell(row,item.title||"");makeCell(row,item.category||"Other");makeCell(row,item.transaction_type||"",item.transaction_type);makeCell(row,money(amount));
+   const actions=makeCell(row,"");actions.className="action-cell";
+   const edit=document.createElement("button");edit.type="button";edit.className="action-btn edit-btn";edit.textContent="Edit";edit.addEventListener("click",()=>startEdit(item));actions.appendChild(edit);
+   const del=document.createElement("button");del.type="button";del.className="action-btn delete-btn";del.textContent="Delete";del.addEventListener("click",()=>deleteTransaction(item));actions.appendChild(del);
+  });
+  document.getElementById("income").textContent=money(income);document.getElementById("expenses").textContent=money(expenses);document.getElementById("balance").textContent=money(income-expenses);document.getElementById("count").textContent=String(transactions.length);
+  if(expenses===0)advice.textContent="You have no recorded expenses yet. Add transactions to receive spending guidance.";
+  else if(income===0)advice.textContent="You have recorded "+money(expenses)+" in expenses but no income yet. Add income to calculate your balance.";
+  else if(expenses>income)advice.textContent="Your recorded expenses exceed your income. Review non-essential spending and check your category budgets.";
+  else advice.textContent="Your recorded balance is "+money(income-expenses)+". Review your monthly category budgets to help control spending.";
+ }catch(error){list.replaceChildren();const row=list.insertRow(),cell=row.insertCell();cell.colSpan=6;cell.textContent="Unable to load transactions. Check that the backend is running, then refresh.";advice.textContent="Unable to load transactions. Check that the backend is running.";console.error(error);}
+}
+
+
+let budgetWarningSound = new Audio("/static/sounds/over_budget.mp3");
+let budget80Sound = new Audio("/static/sounds/budget_80.mp3");
+
+let previousBudgetWarnings = new Set();
+let previous80Warnings = new Set();
+let soundEnabled = false;
+
+
+function enableBudgetSound() {
+  soundEnabled = true;
+  previousBudgetWarnings.clear();
+  budgetWarningSound.currentTime = 0;
+
+  budgetWarningSound.play().then(() => {
+    alert("Budget warning sound enabled!");
+  }).catch(() => {
+    soundEnabled = false;
+    alert("Could not play sound. Please check the audio file.");
+  });
+}
+
+function checkBudgetWarnings(budgets) {
+  const currentWarnings = new Set();
+  const current80Warnings = new Set();
+
+  budgets.forEach(b => {
+    const category = b.category || "Other";
+    const spent = Number(b.spent || 0);
+    const limit = Number(b.monthly_limit || 0);
+    const percentage = limit > 0 ? (spent / limit) * 100 : 0;
+
+    // Play the 80% sound once when entering the 80%-99.99% range
+    if (percentage >= 80 && percentage < 100) {
+      current80Warnings.add(category);
+
+      if (soundEnabled && !previous80Warnings.has(category)) {
+        budget80Sound.currentTime = 0;
+        budget80Sound.play().catch(error => console.error(error));
+      }
+    }
+
+    // Play the existing sound once when reaching 100%
+    if (percentage >= 100) {
+      currentWarnings.add(category);
+
+      if (soundEnabled && !previousBudgetWarnings.has(category)) {
+        budgetWarningSound.currentTime = 0;
+        budgetWarningSound.play().catch(error => console.error(error));
+      }
+    }
+  });
+
+  previousBudgetWarnings = currentWarnings;
+  previous80Warnings = current80Warnings;
+}
+
+async function loadBudgets(){
+ const container=document.getElementById("budgetList");
+ try{
+  const response=await fetch("/api/budget-summary");
+  if(!response.ok)throw new Error("Could not load budgets");
+
+  const budgets=await response.json();
+  if(!Array.isArray(budgets))throw new Error("Unexpected budget data");
+  container.replaceChildren();
+
+  checkBudgetWarnings(budgets);
+
+
+  if(!budgets.length){container.textContent="No budgets set yet. Add your first monthly budget above.";return;}
+  budgets.forEach(b=>{
+   const spent=Number(b.spent||0),limit=Number(b.monthly_limit||0),remaining=Number(b.remaining??(limit-spent)),percentage=limit>0?spent/limit*100:0;
+   const item=document.createElement("div");item.className="budget-item";const heading=document.createElement("h3");heading.textContent=b.category||"Other";item.appendChild(heading);
+   const details=document.createElement("p");details.textContent="Spent: "+money(spent)+" / Limit: "+money(limit);item.appendChild(details);
+   const progress=document.createElement("div");progress.className="progress";progress.setAttribute("aria-label","Budget usage");const bar=document.createElement("div");bar.className="progress-bar";bar.style.width=Math.min(Math.max(percentage,0),100)+"%";if(percentage>=80)bar.style.background="#dc2626";progress.appendChild(bar);item.appendChild(progress);
+   const rem=document.createElement("p");rem.textContent=remaining>=0?"Remaining: "+money(remaining):"Over budget by: "+money(Math.abs(remaining));item.appendChild(rem);
+   const warning=document.createElement("p");warning.textContent=b.warning||(percentage>=100?"Budget exceeded. Reduce spending in this category.":percentage>=80?"You are close to your monthly limit.":"You are within your monthly budget.");warning.className=percentage>=80?"warning":"safe";item.appendChild(warning);container.appendChild(item);
+  });
+ }catch(error){container.textContent="Unable to load budgets. Check that the backend is running.";console.error(error);}
+}
+function startEdit(item){
+ editingId=Number(item.id);
+ document.getElementById("editTitle").value=item.title||"";
+ document.getElementById("editAmount").value=Number(item.amount||0);
+ document.getElementById("editType").value=item.transaction_type||"expense";
+ const categorySelect=document.getElementById("editCategory");
+ if(!Array.from(categorySelect.options).some(o=>o.value===(item.category||"Other"))){const option=document.createElement("option");option.value=item.category;option.textContent=item.category;categorySelect.appendChild(option);}
+ categorySelect.value=item.category||"Other";
+ document.getElementById("editDate").value=item.transaction_date||new Date().toISOString().slice(0,10);
+ document.getElementById("editMessage").textContent="";
+ document.getElementById("editPanel").classList.remove("hidden");
+ document.getElementById("editPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function cancelEdit(){
+ editingId=null;document.getElementById("editForm").reset();document.getElementById("editPanel").classList.add("hidden");document.getElementById("editMessage").textContent="";
+}
+document.getElementById("cancelEdit").addEventListener("click",cancelEdit);
+document.getElementById("editForm").addEventListener("submit",async event=>{
+ event.preventDefault();if(!editingId)return;
+ const button=document.getElementById("editSave"),message=document.getElementById("editMessage");button.disabled=true;message.textContent="Saving changes...";
+ const updated={title:document.getElementById("editTitle").value.trim(),amount:Number(document.getElementById("editAmount").value),transaction_type:document.getElementById("editType").value,category:document.getElementById("editCategory").value,transaction_date:document.getElementById("editDate").value};
+ try{
+  const response=await fetch("/api/transactions/"+editingId,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(updated)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not update transaction");
+  cancelEdit();document.getElementById("message").textContent="Transaction updated successfully.";await loadTransactions();await loadBudgets();
+ }catch(error){message.textContent="Error: "+error.message;}finally{button.disabled=false;}
+});
+async function deleteTransaction(item){
+ if(!confirm('Delete "'+(item.title||"this transaction")+'" ('+money(item.amount)+')? This cannot be undone.'))return;
+ try{
+  const response=await fetch("/api/transactions/"+Number(item.id),{method:"DELETE"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not delete transaction");
+  if(editingId===Number(item.id))cancelEdit();
+  document.getElementById("message").textContent="Transaction deleted successfully.";await loadTransactions();await loadBudgets();
+ }catch(error){document.getElementById("message").textContent="Error: "+error.message;}
+}
+document.getElementById("transactionForm").addEventListener("submit",async event=>{
+ event.preventDefault();const form=event.currentTarget,button=document.getElementById("transactionSubmit"),message=document.getElementById("message");message.textContent="Saving transaction...";button.disabled=true;
+ const transaction={title:document.getElementById("title").value.trim(),amount:Number(document.getElementById("amount").value),transaction_type:document.getElementById("type").value,category:document.getElementById("category").value};
+ try{
+  const response=await fetch("/api/transactions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(transaction)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not save transaction");
+  message.textContent="Transaction saved successfully!";form.reset();await loadTransactions();await loadBudgets();
+ }catch(error){message.textContent="Error: "+error.message;}finally{button.disabled=false;}
+});
+document.getElementById("budgetForm").addEventListener("submit",async event=>{
+ event.preventDefault();const button=document.getElementById("budgetSubmit"),message=document.getElementById("budgetMessage");message.textContent="Saving budget...";button.disabled=true;
+ const budget={category:document.getElementById("budgetCategory").value,monthly_limit:Number(document.getElementById("monthlyLimit").value)};
+ try{
+  const response=await fetch("/api/budgets",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(budget)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not save budget");
+  message.textContent="Budget saved successfully!";document.getElementById("monthlyLimit").value="";await loadBudgets();
+ }catch(error){message.textContent="Error: "+error.message;}finally{button.disabled=false;}
+});
+loadTransactions();loadBudgets();
+
+async function getAIAdvice() {
+  const advice = document.getElementById("advice");
+  const button = document.getElementById("aiAdviceBtn");
+
+  button.disabled = true;
+  button.textContent = "Generating advice...";
+  advice.textContent = "Gemini AI is analyzing your finances...";
+
+  try {
+    // Get all transactions
+    const transactionsResponse = await fetch("/api/transactions");
+
+    if (!transactionsResponse.ok) {
+      throw new Error("Could not load transactions.");
+    }
+
+    const transactions = await transactionsResponse.json();
+
+    let income = 0;
+    let expenses = 0;
+
+    transactions.forEach(item => {
+      const amount = Number(item.amount || 0);
+
+      if (item.transaction_type === "income") {
+        income += amount;
+      } else if (item.transaction_type === "expense") {
+        expenses += amount;
+      }
+    });
+
+    // Get budget information
+    const budgetsResponse = await fetch("/api/budget-summary");
+
+    let budgets = [];
+
+    if (budgetsResponse.ok) {
+      budgets = await budgetsResponse.json();
+
+      if (!Array.isArray(budgets)) {
+        budgets = [];
+      }
+    }
+
+    // Send financial information to Gemini AI
+    const response = await fetch("/api/ai-advice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        income: income,
+        expenses: expenses,
+        budgets: budgets
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.error || "AI advice request failed."
+      );
+    }
+
+    // Display AI-generated advice
+    advice.textContent =
+      result.advice || "No advice was returned.";
+
+  } catch (error) {
+    console.error("AI advice error:", error);
+
+    advice.textContent =
+      "Unable to get AI advice. Please check the server and try again.";
+
+  } finally {
+    button.disabled = false;
+    button.textContent = "Get AI Advice";
+  }
+}
+
+</script>
+</body>
+</html>
