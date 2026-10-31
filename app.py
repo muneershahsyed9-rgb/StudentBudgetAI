@@ -131,7 +131,7 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
             connection = get_connection()
             try:
                 row = connection.execute(
-                    "SELECT * FROM transactions WHERE id = ?", (transaction_id,)
+                    "SELECT * FROM transactions WHERE id = %s", (transaction_id,)
                 ).fetchone()
                 if row is None:
                     self.send_json({"error": "Transaction not found"}, 404)
@@ -153,8 +153,8 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
                     LEFT JOIN transactions t
                         ON t.category = b.category
                         AND t.transaction_type = 'expense'
-                        AND strftime('%Y-%m', t.transaction_date)
-                            = strftime('%Y-%m', 'now', 'localtime')
+                        AND t.transaction_date::date >= date_trunc('month', CURRENT_DATE)::date
+                        AND t.transaction_date::date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
                     GROUP BY b.id, b.category, b.monthly_limit
                     ORDER BY b.category
                 """).fetchall()
@@ -194,11 +194,12 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
                 cursor = connection.execute("""
                     INSERT INTO transactions
                     (title, amount, transaction_type, category, transaction_date)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
                 """, (transaction["title"], transaction["amount"],
                       transaction["transaction_type"], transaction["category"],
                       transaction["transaction_date"]))
-                transaction_id = cursor.lastrowid
+                transaction_id = cursor.fetchone()["id"]
                 connection.commit()
             finally:
                 connection.close()
@@ -308,9 +309,9 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
         try:
             cursor = connection.execute("""
                 UPDATE transactions
-                SET title = ?, amount = ?, transaction_type = ?,
-                    category = ?, transaction_date = ?
-                WHERE id = ?
+                SET title = %s, amount = %s, transaction_type = %s,
+                    category = %s, transaction_date = %s
+                WHERE id = %s
             """, (transaction["title"], transaction["amount"],
                   transaction["transaction_type"], transaction["category"],
                   transaction["transaction_date"], transaction_id))
@@ -331,7 +332,7 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
         connection = get_connection()
         try:
             cursor = connection.execute(
-                "DELETE FROM transactions WHERE id = ?", (transaction_id,)
+                "DELETE FROM transactions WHERE id = %s", (transaction_id,)
             )
             if cursor.rowcount == 0:
                 self.send_json({"error": "Transaction not found"}, 404)
@@ -344,8 +345,13 @@ class StudentBudgetHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     initialize_database()
-    server = HTTPServer(("localhost", 8000), StudentBudgetHandler)
-    print("StudentBudgetAI running at http://localhost:8000")
+
+    port = int(os.environ.get("PORT", 8000))
+
+    server = HTTPServer(("0.0.0.0", port), StudentBudgetHandler)
+
+    print(f"StudentBudgetAI running on port {port}")
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
