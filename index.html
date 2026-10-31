@@ -24,7 +24,34 @@ button{background:#2563eb;color:white;border:0;cursor:pointer;font-weight:bold}b
 </style>
 </head>
 <body>
-<header><h1>StudentBudgetAI</h1><p>Your student money management dashboard</p></header>
+<div id="authScreen" style="max-width:420px;margin:70px auto;padding:25px;background:white;border-radius:14px;box-shadow:0 3px 14px #0f172a15;">
+  <h1 style="color:#172554;text-align:center;">StudentBudgetAI</h1>
+  <p style="text-align:center;color:#64748b;">Manage your student finances securely</p>
+
+  <div style="display:flex;gap:10px;margin:20px 0;">
+    <button type="button" id="showLogin">Login</button>
+    <button type="button" id="showRegister" class="secondary-btn">Register</button>
+  </div>
+
+  <form id="authForm" style="display:grid;grid-template-columns:1fr;gap:12px;">
+    <input id="authUsername" type="text" placeholder="Username" minlength="3" maxlength="30" autocomplete="username" required>
+    <input id="authPassword" type="password" placeholder="Password (minimum 10 characters)" minlength="10" maxlength="128" autocomplete="current-password" required>
+    <button id="authSubmit" type="submit">Login</button>
+  </form>
+
+  <p id="authMessage" role="status" aria-live="polite"></p>
+</div>
+
+
+<div id="dashboard" class="hidden">
+<header style="display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;">
+  <div>
+    <h1>StudentBudgetAI</h1>
+    <p>Your student money management dashboard</p>
+    <p id="welcomeUser"></p>
+  </div>
+  <button type="button" id="logoutButton" style="width:auto;background:#dc2626;">Logout</button>
+</header>
 <main>
 <section class="cards" aria-label="Financial summary">
 <div class="card"><p>Total Income</p><h2 id="income">Rs. 0.00</h2></div>
@@ -89,11 +116,126 @@ button{background:#2563eb;color:white;border:0;cursor:pointer;font-weight:bold}b
 </section>
 
 </main>
+</div>
 
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 "use strict";
+let authMode = "login";
+
+const authScreen = document.getElementById("authScreen");
+const dashboard = document.getElementById("dashboard");
+const authForm = document.getElementById("authForm");
+const authMessage = document.getElementById("authMessage");
+
+function showAuthMode(mode) {
+  authMode = mode;
+
+  document.getElementById("authSubmit").textContent =
+    mode === "login" ? "Login" : "Create Account";
+
+  document.getElementById("authPassword").autocomplete =
+    mode === "login" ? "current-password" : "new-password";
+
+  document.getElementById("authMessage").textContent = "";
+}
+
+document.getElementById("showLogin").addEventListener("click", () => {
+  showAuthMode("login");
+});
+
+document.getElementById("showRegister").addEventListener("click", () => {
+  showAuthMode("register");
+});
+
+function showDashboard(username) {
+  authScreen.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+
+  document.getElementById("welcomeUser").textContent =
+    "Welcome, " + username;
+
+  loadTransactions();
+  loadBudgets();
+}
+
+async function checkLogin() {
+  try {
+    const response = await fetch("/api/me");
+
+    if (response.ok) {
+      const user = await response.json();
+      showDashboard(user.username);
+    } else {
+      authScreen.classList.remove("hidden");
+      dashboard.classList.add("hidden");
+    }
+  } catch (error) {
+    authMessage.textContent = "Cannot connect to the server.";
+  }
+}
+
+authForm.addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const button = document.getElementById("authSubmit");
+  button.disabled = true;
+  authMessage.textContent = "Please wait...";
+
+  const credentials = {
+    username: document.getElementById("authUsername").value.trim(),
+    password: document.getElementById("authPassword").value
+  };
+
+  try {
+    const response = await fetch(
+      authMode === "login" ? "/api/login" : "/api/register",
+      {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(credentials)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Authentication failed.");
+    }
+
+    authForm.reset();
+    authMessage.textContent = "";
+
+    await checkLogin();
+
+  } catch (error) {
+    authMessage.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+document.getElementById("logoutButton").addEventListener("click", async () => {
+  try {
+    const response = await fetch("/api/logout", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({})
+    });
+
+    if (!response.ok) {
+      throw new Error("Logout failed.");
+    }
+
+    dashboard.classList.add("hidden");
+    authScreen.classList.remove("hidden");
+    showAuthMode("login");
+
+  } catch (error) {
+    alert(error.message);
+  }
+});
 const money = amount => "Rs. " + Number(amount || 0).toLocaleString("en-PK",{minimumFractionDigits:2,maximumFractionDigits:2});
 let expenseChartInstance=null, monthlyChartInstance=null, editingId=null;
 
@@ -277,7 +419,7 @@ document.getElementById("budgetForm").addEventListener("submit",async event=>{
   message.textContent="Budget saved successfully!";document.getElementById("monthlyLimit").value="";await loadBudgets();
  }catch(error){message.textContent="Error: "+error.message;}finally{button.disabled=false;}
 });
-loadTransactions();loadBudgets();
+
 
 async function getAIAdvice() {
   const advice = document.getElementById("advice");
@@ -288,77 +430,32 @@ async function getAIAdvice() {
   advice.textContent = "Gemini AI is analyzing your finances...";
 
   try {
-    // Get all transactions
-    const transactionsResponse = await fetch("/api/transactions");
-
-    if (!transactionsResponse.ok) {
-      throw new Error("Could not load transactions.");
-    }
-
-    const transactions = await transactionsResponse.json();
-
-    let income = 0;
-    let expenses = 0;
-
-    transactions.forEach(item => {
-      const amount = Number(item.amount || 0);
-
-      if (item.transaction_type === "income") {
-        income += amount;
-      } else if (item.transaction_type === "expense") {
-        expenses += amount;
-      }
-    });
-
-    // Get budget information
-    const budgetsResponse = await fetch("/api/budget-summary");
-
-    let budgets = [];
-
-    if (budgetsResponse.ok) {
-      budgets = await budgetsResponse.json();
-
-      if (!Array.isArray(budgets)) {
-        budgets = [];
-      }
-    }
-
-    // Send financial information to Gemini AI
     const response = await fetch("/api/ai-advice", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        income: income,
-        expenses: expenses,
-        budgets: budgets
-      })
+      body: JSON.stringify({})
     });
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(
-        result.error || "AI advice request failed."
-      );
+      throw new Error(result.error || "AI advice request failed.");
     }
 
-    // Display AI-generated advice
-    advice.textContent =
-      result.advice || "No advice was returned.";
+    advice.textContent = result.advice || "No advice was returned.";
 
   } catch (error) {
     console.error("AI advice error:", error);
-
-    advice.textContent =
-      "Unable to get AI advice. Please check the server and try again.";
+    advice.textContent = "Unable to get AI advice. Please try again.";
 
   } finally {
     button.disabled = false;
     button.textContent = "Get AI Advice";
   }
 }
+checkLogin();
 
 </script>
 </body>
